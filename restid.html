@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="sv" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Restid Kalkylator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #f6f7f9; --surface: #ffffff; --text: #1b1f24; --muted: #5d6673; --border: #dde1e6;
+    --accent: #2457c5; --accent-soft: #e8eefb;
+    --err: #b42318; --err-soft: #fdecea; --warn: #9a6200; --warn-soft: #fff4dc;
+    --info: #3b5b86; --info-soft: #eaf1fa; --ok: #1e7a46; --ok-soft: #e6f4ec;
+    --helg: #f3eefc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121417; --surface: #1b1e23; --text: #e6e8eb; --muted: #9aa3ae; --border: #2e333a;
+      --accent: #7ea6ff; --accent-soft: #1f2a44;
+      --err: #ff8a80; --err-soft: #3a1f1d; --warn: #f5c56b; --warn-soft: #3a2f17;
+      --info: #9cc0ee; --info-soft: #1d2a3b; --ok: #7fd3a1; --ok-soft: #173225;
+      --helg: #251f33;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121417; --surface: #1b1e23; --text: #e6e8eb; --muted: #9aa3ae; --border: #2e333a;
+    --accent: #7ea6ff; --accent-soft: #1f2a44;
+    --err: #ff8a80; --err-soft: #3a1f1d; --warn: #f5c56b; --warn-soft: #3a2f17;
+    --info: #9cc0ee; --info-soft: #1d2a3b; --ok: #7fd3a1; --ok-soft: #173225;
+    --helg: #251f33;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  h2 { font-size: 1.05rem; margin: 0 0 12px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; }
+  label.field { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; color: var(--muted); }
+  select { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text); min-width: 160px; }
+  .drop { flex: 1; min-width: 240px; border: 2px dashed var(--border); border-radius: 10px; padding: 14px;
+    text-align: center; cursor: pointer; color: var(--muted); transition: border-color .15s, background .15s; }
+  .drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  .drop strong { color: var(--text); }
+  .drop input { display: none; }
+  .fileinfo { font-size: .85rem; color: var(--muted); margin-top: 10px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .card .k { font-size: .8rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .card .v { font-size: 1.9rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .card .d { font-size: .85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .card.main { border-color: var(--accent); }
+  .card.main .v { color: var(--accent); }
+  .calc { font-size: .85rem; color: var(--muted); margin-top: 12px; font-variant-numeric: tabular-nums; }
+  .banner { padding: 10px 14px; border-radius: 8px; margin-bottom: 12px; font-weight: 550; }
+  .banner.err { background: var(--err-soft); color: var(--err); }
+  .banner.ok { background: var(--ok-soft); color: var(--ok); }
+  .banner.warn { background: var(--warn-soft); color: var(--warn); }
+  ul.issues { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  ul.issues li { padding: 8px 12px; border-radius: 8px; font-size: .9rem; display: flex; gap: 10px; }
+  ul.issues li .tag { font-weight: 650; min-width: 70px; flex-shrink: 0; }
+  li.error { background: var(--err-soft); color: var(--err); }
+  li.warn { background: var(--warn-soft); color: var(--warn); }
+  li.info { background: var(--info-soft); color: var(--info); }
+  .tablewrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: .85rem; font-variant-numeric: tabular-nums; }
+  th, td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--surface); }
+  td.num, th.num { text-align: right; }
+  tr.helg td { background: var(--helg); }
+  tr.empty td { color: var(--muted); opacity: .6; }
+  tr.has-error td:first-child { box-shadow: inset 3px 0 0 var(--err); }
+  tr.has-warn td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+  .struck { text-decoration: line-through; color: var(--muted); }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: .75rem; background: var(--accent-soft); color: var(--accent); }
+  .pill.helg { background: var(--helg); color: var(--text); border: 1px solid var(--border); }
+  .rowflags { white-space: normal; min-width: 180px; color: var(--muted); }
+  .rowflags .e { color: var(--err); } .rowflags .w { color: var(--warn); }
+  .hidden { display: none; }
+  .legend { font-size: .8rem; color: var(--muted); margin-top: 8px; }
+  button { font: inherit; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  .row-between { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .row-between h2 { margin: 0; }
+  @media (max-width: 600px) { .card .v { font-size: 1.5rem; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Restid</h1>
+  <p class="sub">Beräknar restid för en månad ur restidsfilen ("Förnamn Efternamn År.xlsx"). Filen läses bara i webbläsaren och skickas ingenstans.</p>
+
+  <section class="panel">
+    <div class="controls">
+      <label class="field">Månad
+        <select id="month"></select>
+      </label>
+      <label class="drop" id="drop">
+        <input type="file" id="file" accept=".xlsx,.xlsm,.xls">
+        <strong>Välj restidsfil</strong> eller dra och släpp den här
+      </label>
+    </div>
+    <div class="fileinfo" id="fileinfo">Ingen fil vald.</div>
+  </section>
+
+  <div id="results" class="hidden">
+    <div id="banner"></div>
+
+    <section class="cards" id="cards"></section>
+    <div class="panel calc" id="calc" style="margin-top:12px"></div>
+
+    <section class="panel" id="issuesPanel">
+      <h2>Kontroll av fält</h2>
+      <ul class="issues" id="issues"></ul>
+    </section>
+
+    <section class="panel">
+      <div class="row-between">
+        <h2>Dagar</h2>
+        <label style="font-size:.85rem;color:var(--muted)"><input type="checkbox" id="showEmpty"> Visa tomma dagar</label>
+      </div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr>
+            <th>Datum</th><th>Dag</th><th>Butik/arbete</th>
+            <th class="num">Avf. hem</th><th class="num">Ank. butik</th><th class="num">Lunch</th>
+            <th class="num">Avf. butik</th><th class="num">Ank. hem</th>
+            <th class="num">Resa 1</th><th class="num">Resa 2</th><th class="num">Butikstid</th>
+            <th class="num">Arbetstid (räknad)</th><th>Typ</th><th>Anmärkning</th>
+          </tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div class="legend">Överstrukna resor är under 45 min och räknas inte. Lila rader är helg/röd dag: där räknas bara restid (resor ≥ 45 min) som Restid Helg.</div>
+    </section>
+  </div>
+</main>
+
+<script>
+const MONTHS = ['Januari','Februari','Mars','April','Maj','Juni','Juli','Augusti','September','Oktober','November','December'];
+const WEEKDAYS = ['Söndag','Måndag','Tisdag','Onsdag','Torsdag','Fredag','Lördag'];
+const MIN_TRIP = 45;          // minutes; shorter single trips are disregarded
+const WORKDAY = 8 * 60;       // minutes subtracted per worked weekday
+const FIRST_DAY_ROW = 9;      // row of day 1
+const FG_ROWS = [7, 8];       // "Fg månad" rows
+const ABSENCE_WORDS = /^(sem|semester|sjuk|ledig|vab|komp|kompledig|föräldraledig|tjänstledig|frånvaro)\b/i;
+
+const $ = id => document.getElementById(id);
+let workbook = null, fileMeta = null;
+
+// ---------- Month dropdown, preselected to previous month ----------
+(function initMonth() {
+  const sel = $('month');
+  MONTHS.forEach((m, i) => sel.add(new Option(m, i)));
+  sel.value = String((new Date().getMonth() + 11) % 12);
+  sel.addEventListener('change', run);
+})();
+
+// ---------- File handling ----------
+$('file').addEventListener('change', e => e.target.files[0] && loadFile(e.target.files[0]));
+const drop = $('drop');
+['dragenter','dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => e.dataTransfer.files[0] && loadFile(e.dataTransfer.files[0]));
+$('showEmpty').addEventListener('change', run);
+
+function loadFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      workbook = XLSX.read(new Uint8Array(reader.result), { type: 'array' });
+    } catch (err) {
+      workbook = null;
+      $('fileinfo').textContent = 'Kunde inte läsa filen: ' + err.message;
+      return;
+    }
+    fileMeta = parseFileName(file.name);
+    $('fileinfo').textContent = `Fil: ${file.name}` + (fileMeta.year ? ` · Namn: ${fileMeta.name || '?'} · År: ${fileMeta.year}` : '');
+    run();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// "First Last Year.xlsx" -> { name, year }
+function parseFileName(fn) {
+  const base = fn.replace(/\.[^.]+$/, '').replace(/\s*\(\d+\)$/, '').trim(); // also strip " (1)" from re-downloads
+  const m = base.match(/^(.+?)\s+(\d{4})$/);
+  if (!m) return { name: base, year: null, ok: false };
+  return { name: m[1].trim(), year: +m[2], ok: m[1].trim().split(/\s+/).length >= 2 };
+}
+
+// ---------- Date helpers ----------
+function easter(y) { // Anonymous Gregorian algorithm
+  const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4,
+        f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30,
+        i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451),
+        month = Math.floor((h + l - 7 * m + 114) / 31), day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(y, month - 1, day);
+}
+const key = d => `${d.getMonth() + 1}-${d.getDate()}`;
+const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+function firstWeekdayBetween(y, m, fromDay, toDay, wd) {
+  for (let day = fromDay; day <= toDay; day++) { const d = new Date(y, m, day); if (d.getDay() === wd) return d; }
+}
+const holidayCache = {};
+function swedishHolidays(y) { // röda dagar + helgdagsaftnar that are normally days off
+  if (holidayCache[y]) return holidayCache[y];
+  const h = new Map(), e = easter(y), add = (d, n) => h.set(key(d), n);
+  add(new Date(y, 0, 1), 'Nyårsdagen');
+  add(new Date(y, 0, 6), 'Trettondedag jul');
+  add(addDays(e, -2), 'Långfredagen');
+  add(addDays(e, -1), 'Påskafton');
+  add(e, 'Påskdagen');
+  add(addDays(e, 1), 'Annandag påsk');
+  add(new Date(y, 4, 1), 'Första maj');
+  add(addDays(e, 39), 'Kristi himmelsfärdsdag');
+  add(addDays(e, 49), 'Pingstdagen');
+  add(new Date(y, 5, 6), 'Sveriges nationaldag');
+  const midsommarafton = firstWeekdayBetween(y, 5, 19, 25, 5);
+  add(midsommarafton, 'Midsommarafton');
+  add(addDays(midsommarafton, 1), 'Midsommardagen');
+  const allaHelgon = firstWeekdayBetween(y, 9, 31, 37, 6); // Oct 31 – Nov 6 (Date rolls over)
+  add(allaHelgon, 'Alla helgons dag');
+  add(new Date(y, 11, 24), 'Julafton');
+  add(new Date(y, 11, 25), 'Juldagen');
+  add(new Date(y, 11, 26), 'Annandag jul');
+  add(new Date(y, 11, 31), 'Nyårsafton');
+  return holidayCache[y] = h;
+}
+function dayType(d) {
+  const hol = swedishHolidays(d.getFullYear()).get(key(d));
+  if (hol) return { helg: true, reason: hol };
+  if (d.getDay() === 0) return { helg: true, reason: 'Söndag' };
+  if (d.getDay() === 6) return { helg: true, reason: 'Lördag' };
+  return { helg: false, reason: '' };
+}
+
+// ---------- Formatting ----------
+function hm(min) {
+  if (min == null) return '';
+  const s = min < 0 ? '−' : '', a = Math.abs(Math.round(min));
+  return `${s}${Math.floor(a / 60)}:${String(a % 60).padStart(2, '0')}`;
+}
+const dec = min => (min / 60).toFixed(2).replace('.', ',').replace('-', '−');
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// ---------- Cell reading ----------
+// Returns { min } for a valid time, { empty: true } for blank / template formula, or { bad: msg }.
+function readTime(ws, addr) {
+  const c = ws[addr];
+  if (!c || c.v == null || (typeof c.v === 'string' && c.v.trim() === '')) return { empty: true };
+  if (c.f) return { empty: true, formula: c.f }; // template formulas like =F9 mean "not filled in"
+  if (c.t === 'n') {
+    if (c.v < 0) return { bad: `negativt värde (${c.v})` };
+    if (c.v >= 1) {
+      const frac = c.v - Math.floor(c.v);
+      if (frac === 0) return { bad: `"${c.v}" är ett tal, inte ett klockslag (skriv hh:mm)` };
+      return { min: Math.round(frac * 1440) % 1440, note: 'cellen innehåller datum + tid, endast tiden används' };
+    }
+    return { min: Math.round(c.v * 1440) % 1440 };
+  }
+  if (c.t === 's') {
+    const m = c.v.trim().match(/^(\d{1,2})[:.,](\d{2})$/);
+    if (m && +m[1] < 24 && +m[2] < 60) return { min: +m[1] * 60 + +m[2], note: `"${c.v.trim()}" är inmatad som text, inte som tid` };
+    return { bad: `ogiltigt värde "${c.v}"` };
+  }
+  if (c.t === 'b') return { bad: 'innehåller sant/falskt' };
+  if (c.t === 'e') return { bad: 'innehåller ett formelfel' };
+  return { bad: `okänt värde "${c.w ?? c.v}"` };
+}
+function readText(ws, addr) {
+  const c = ws[addr];
+  if (!c || c.v == null) return '';
+  return String(c.w ?? c.v).trim();
+}
+function readNumber(ws, addr) {
+  const c = ws[addr];
+  if (!c || c.v == null || c.v === '' || c.f) return null;
+  return typeof c.v === 'number' ? c.v : parseFloat(String(c.v).replace(',', '.'));
+}
+
+// ---------- Core ----------
+function findSheet(name) {
+  if (workbook.Sheets[name]) return workbook.Sheets[name];
+  const hit = workbook.SheetNames.find(n => n.trim().toLowerCase() === name.toLowerCase());
+  return hit ? workbook.Sheets[hit] : null;
+}
+
+function analyseRow(ws, row, date, label) {
+  const r = { label, date, issues: [], trips: [] };
+  const add = (level, msg) => r.issues.push({ level, msg });
+  r.butik = readText(ws, 'D' + row);
+  r.absence = readNumber(ws, 'N' + row);
+  r.absenceReason = readText(ws, 'O' + row);
+  const t = {};
+  const names = { E: 'Avfärd hemifrån', F: 'Ankomst till butik', G: 'Lunch/rast', H: 'Avfärd från butik', I: 'Ankomst hem' };
+  for (const col of 'EFGHI') {
+    const v = readTime(ws, col + row);
+    if (v.bad) { add('error', `${names[col]} (${col}${row}): ${v.bad}`); t[col] = null; }
+    else { t[col] = v.empty ? null : v.min; if (v.note) add('warn', `${names[col]} (${col}${row}): ${v.note}`); }
+  }
+  Object.assign(r, { e: t.E, f: t.F, g: t.G, h: t.H, i: t.I });
+  const anyTime = [t.E, t.F, t.G, t.H, t.I].some(v => v != null);
+  r.empty = !anyTime && !r.butik && r.absence == null;
+  if (r.empty) return r;
+
+  const type = date ? dayType(date) : { helg: false, reason: '' };
+  r.helg = type.helg; r.reason = type.reason;
+
+  // ----- Validation -----
+  const hasStore = t.F != null && t.H != null;
+  if ((t.F != null) !== (t.H != null))
+    add('error', t.F != null ? 'Ankomst till butik finns men Avfärd från butik saknas' : 'Avfärd från butik finns men Ankomst till butik saknas');
+  if (hasStore && t.H <= t.F) add('error', `Avfärd från butik (${hm(t.H)}) är inte efter ankomst (${hm(t.F)})`);
+  if (hasStore && t.H > t.F) {
+    if (t.G == null) add('warn', 'Lunch/rast är inte ifylld (räknas som 0:00)');
+    if (t.G != null && t.G >= t.H - t.F) add('error', `Lunch/rast (${hm(t.G)}) är lika lång eller längre än tiden i butik`);
+    else if (t.G != null && t.G > 120) add('warn', `Lunch/rast är ovanligt lång (${hm(t.G)})`);
+  }
+  if (t.G != null && !hasStore && t.F == null && t.H == null) add('warn', 'Lunch/rast ifylld utan tider i butik');
+  if (t.E != null && t.F != null && t.E > t.F) add('error', `Avfärd hemifrån (${hm(t.E)}) är efter ankomst till butik (${hm(t.F)})`);
+  if (t.E != null && t.F != null && t.E === t.F) add('warn', `Avfärd hemifrån är samma som ankomst till butik (${hm(t.E)}), lämna cellen blank om ingen resa`);
+  if (t.I != null && t.H != null && t.I < t.H) add('error', `Ankomst hem (${hm(t.I)}) är före avfärd från butik (${hm(t.H)})`);
+  if (t.I != null && t.H != null && t.I === t.H) add('warn', `Ankomst hem är samma som avfärd från butik (${hm(t.I)}), lämna cellen blank om ingen resa`);
+  const travelOnly = t.F == null && t.H == null && t.E != null && t.I != null;
+  if (travelOnly && t.I <= t.E) add('error', `Ankomst hem (${hm(t.I)}) är inte efter avfärd hemifrån (${hm(t.E)})`);
+  if (t.F == null && t.H == null && (t.E != null) !== (t.I != null))
+    add('error', t.E != null ? 'Avfärd hemifrån ifylld men varken butikstider eller ankomst hem' : 'Ankomst hem ifylld men varken butikstider eller avfärd hemifrån');
+  if (anyTime && !r.butik) add('warn', 'Tider ifyllda men Butik/arbete är tomt');
+  if (!anyTime && r.butik && !ABSENCE_WORDS.test(r.butik) && r.absence == null)
+    add('warn', `"${r.butik}" angiven men inga tider är ifyllda`);
+  if (r.absence != null && !(r.absence >= 0 && r.absence <= 8))
+    add('warn', `Frånvaro (tim) = ${String(r.absence).replace('.', ',')} ser orimligt ut`);
+  if (r.absence != null && r.absence > 0 && !r.absenceReason) add('warn', 'Frånvaro angiven men orsak saknas');
+
+  // ----- Trips -----
+  if (travelOnly && t.I > t.E) r.trips.push({ name: 'Resa (hel dag)', min: t.I - t.E });
+  else {
+    if (t.E != null && t.F != null && t.F > t.E) r.trips.push({ name: 'Hem → butik', min: t.F - t.E });
+    if (t.I != null && t.H != null && t.I > t.H) r.trips.push({ name: 'Butik → hem', min: t.I - t.H });
+  }
+  r.trips.forEach(tr => {
+    tr.counted = tr.min >= MIN_TRIP;
+    if (!tr.counted) add('info', `${tr.name} ${hm(tr.min)} är under 45 min och räknas inte`);
+  });
+  r.travel = r.trips.filter(tr => tr.counted).reduce((s, tr) => s + tr.min, 0);
+  r.store = hasStore && t.H > t.F ? Math.max(0, t.H - t.F - (t.G || 0)) : 0;
+
+  if (r.helg) {
+    // Helg / röd dag: only travel counts, as Restid Helg; not a worked day.
+    // Travel is sometimes entered in the store columns on these days, so that time counts as a trip too.
+    if (r.store > 0) {
+      const tr = { name: 'Resa (butikskolumner)', min: r.store, counted: r.store >= MIN_TRIP };
+      r.trips.push(tr);
+      if (tr.counted) r.travel += tr.min;
+      else add('info', `${tr.name} ${hm(tr.min)} är under 45 min och räknas inte`);
+      r.store = 0;
+    }
+    r.worked = false;
+    r.restidHelg = r.travel;
+    r.total = null;
+  } else {
+    r.worked = (hasStore && t.H > t.F) || (travelOnly && t.I > t.E);
+    r.total = r.store + r.travel;
+    if (travelOnly) add('info', 'Resdag utan butikstider: räknas som arbetad dag (restid − 8:00)');
+  }
+  if (r.total != null && r.total > 16 * 60) add('warn', `Väldigt lång dag (${hm(r.total)})`);
+  return r;
+}
+
+function run() {
+  if (!workbook) return;
+  const mIdx = +$('month').value, mName = MONTHS[mIdx];
+  const year = fileMeta?.year || new Date().getFullYear();
+  const global = [];
+  const results = $('results');
+  results.classList.remove('hidden');
+
+  if (!fileMeta?.year || !fileMeta.ok)
+    global.push({ level: 'warn', where: 'Filnamn', msg: `Filnamnet följer inte mönstret "Förnamn Efternamn År". Året ${year} används för veckodagar.` });
+
+  const ws = findSheet(mName);
+  if (!ws) {
+    global.push({ level: 'error', where: 'Flik', msg: `Fliken "${mName}" finns inte i filen (flikar: ${workbook.SheetNames.join(', ')})` });
+    render(mName, year, [], [], global);
+    return;
+  }
+
+  // Fg månad rows: always treated as weekdays
+  const fgRows = FG_ROWS.map((row, n) => analyseRow(ws, row, null, `Fg månad ${n + 1}`)).filter(r => !r.empty);
+
+  // Day rows
+  const daysInMonth = new Date(year, mIdx + 1, 0).getDate();
+  const dayRows = [];
+  for (let day = 1; day <= 31; day++) {
+    const row = FIRST_DAY_ROW + day - 1;
+    const cellDay = ws['C' + row]?.v;
+    if (cellDay != null && +cellDay !== day)
+      global.push({ level: 'warn', where: 'C' + row, msg: `Förväntade datum ${day} men cellen innehåller "${cellDay}"` });
+    if (day > daysInMonth) {
+      const r = analyseRow(ws, row, null, `${day}`);
+      if (!r.empty) global.push({ level: 'error', where: `Rad ${row}`, msg: `${mName} ${year} har bara ${daysInMonth} dagar, men datum ${day} är ifyllt (räknas inte)` });
+      continue;
+    }
+    const date = new Date(year, mIdx, day);
+    dayRows.push(analyseRow(ws, row, date, `${day}`));
+  }
+  render(mName, year, fgRows, dayRows, global);
+}
+
+function render(mName, year, fgRows, dayRows, global) {
+  const all = [...fgRows, ...dayRows];
+  const worked = all.filter(r => !r.empty && !r.helg && r.worked);
+  const vardagRows = all.filter(r => !r.empty && !r.helg);
+  const totalVardag = vardagRows.reduce((s, r) => s + (r.total || 0), 0);
+  const travelVardag = vardagRows.reduce((s, r) => s + (r.travel || 0), 0);
+  const restidVardag = totalVardag - WORKDAY * worked.length;
+  const restidHelg = all.filter(r => !r.empty && r.helg).reduce((s, r) => s + r.restidHelg, 0);
+  const fgTotal = fgRows.reduce((s, r) => s + (r.total || 0), 0);
+  const fgWorked = fgRows.filter(r => r.worked).length;
+
+  // Issues
+  const issues = [...global];
+  all.forEach(r => r.issues.forEach(i => issues.push({ ...i, where: r.date ? `${r.label}/${r.date.getMonth() + 1} ${WEEKDAYS[r.date.getDay()].slice(0, 3)}` : r.label })));
+  const order = { error: 0, warn: 1, info: 2 };
+  issues.sort((a, b) => order[a.level] - order[b.level]);
+  const nErr = issues.filter(i => i.level === 'error').length, nWarn = issues.filter(i => i.level === 'warn').length;
+
+  $('banner').innerHTML = nErr
+    ? `<div class="banner err">${nErr} fel hittades i ${esc(mName)}. Rätta filen innan restiden rapporteras, resultatet nedan kan vara fel.</div>`
+    : nWarn ? `<div class="banner warn">Inga fel, men ${nWarn} varning${nWarn > 1 ? 'ar' : ''} att titta på.</div>`
+    : `<div class="banner ok">Alla fält i ${esc(mName)} ser korrekta ut.</div>`;
+
+  $('cards').innerHTML = `
+    <div class="card main"><div class="k">Restid Vardag</div><div class="v">${hm(restidVardag)}</div><div class="d">${dec(restidVardag)} tim</div></div>
+    <div class="card main"><div class="k">Restid Helg</div><div class="v">${hm(restidHelg)}</div><div class="d">${dec(restidHelg)} tim</div></div>
+    <div class="card"><div class="k">Arbetade vardagar</div><div class="v">${worked.length}</div><div class="d">varav Fg månad: ${fgWorked}</div></div>
+    <div class="card"><div class="k">Arbetstid vardag totalt</div><div class="v">${hm(totalVardag)}</div><div class="d">varav räknad restid ${hm(travelVardag)}</div></div>`;
+
+  $('calc').innerHTML = `<strong>${esc(mName)} ${year}</strong> · Restid Vardag = arbetstid vardag ${hm(totalVardag)} − 8:00 × ${worked.length} arbetade vardagar (${hm(WORKDAY * worked.length)}) = <strong>${hm(restidVardag)}</strong>`
+    + (fgRows.length ? ` · Fg månad ingår med ${fgRows.length} rad${fgRows.length > 1 ? 'er' : ''} (${hm(fgTotal)}, räknas som vardag)` : '')
+    + (restidVardag < 0 ? ` · <span style="color:var(--warn)">Negativ restid: arbetstiden är kortare än 8 tim × arbetade dagar.</span>` : '');
+
+  $('issues').innerHTML = issues.length
+    ? issues.map(i => `<li class="${i.level}"><span class="tag">${esc(i.where)}</span><span>${{ error: 'Fel: ', warn: 'Varning: ', info: '' }[i.level]}${esc(i.msg)}</span></li>`).join('')
+    : '<li class="info"><span>Inga anmärkningar.</span></li>';
+
+  const showEmpty = $('showEmpty').checked;
+  $('rows').innerHTML = all.filter(r => showEmpty || !r.empty).map(r => {
+    const lvl = r.issues.some(i => i.level === 'error') ? 'has-error' : r.issues.some(i => i.level === 'warn') ? 'has-warn' : '';
+    const helgDay = r.date && dayType(r.date).helg;
+    const cls = [r.empty ? 'empty' : '', (r.helg || (r.empty && helgDay)) ? 'helg' : '', lvl].join(' ');
+    const trip = n => { const t = r.trips?.[n]; return t ? `<span class="${t.counted ? '' : 'struck'}" title="${esc(t.name)}">${hm(t.min)}</span>` : ''; };
+    const typ = r.empty ? '' : r.helg ? `<span class="pill helg">${esc(r.reason)}</span>` : r.worked ? '<span class="pill">Arbetad vardag</span>' : 'Vardag';
+    const flags = r.issues.map(i => `<div class="${i.level === 'error' ? 'e' : i.level === 'warn' ? 'w' : ''}">${esc(i.msg)}</div>`).join('');
+    const dateCell = r.date ? `${r.date.getDate()}/${r.date.getMonth() + 1}` : esc(r.label);
+    const dayCell = r.date ? WEEKDAYS[r.date.getDay()] : 'Vardag (antas)';
+    const totalCell = r.empty ? '' : r.helg ? `Helg: ${hm(r.restidHelg)}` : hm(r.total);
+    return `<tr class="${cls}">
+      <td>${dateCell}</td><td>${dayCell}</td><td>${esc(r.butik)}</td>
+      <td class="num">${hm(r.e)}</td><td class="num">${hm(r.f)}</td><td class="num">${hm(r.g)}</td>
+      <td class="num">${hm(r.h)}</td><td class="num">${hm(r.i)}</td>
+      <td class="num">${trip(0)}</td><td class="num">${trip(1)}</td>
+      <td class="num">${r.store ? hm(r.store) : ''}</td><td class="num">${totalCell}</td>
+      <td>${typ}</td><td class="rowflags">${flags}</td></tr>`;
+  }).join('');
+}
+</script>
+</body>
+</html>
